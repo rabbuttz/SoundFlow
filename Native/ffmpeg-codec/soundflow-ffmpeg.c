@@ -6,10 +6,13 @@
 #include <libavutil/channel_layout.h>
 #include <libavutil/audio_fifo.h>
 #include <libavutil/mathematics.h>
+#include <libavutil/mem.h>
+#include <libavutil/samplefmt.h>
 #include <libswresample/swresample.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <limits.h>
 
 #define IO_BUFFER_SIZE 32768
 
@@ -29,6 +32,14 @@ struct SF_Decoder {
     void* pUserData;
     int target_bytes_per_sample;
     int target_channels;
+    int64_t seek_target_frame;
+    int seek_target_pending;
+    // Container-PCM-frame offset of linear[0]: where the very first sample
+    // emitted by linear decoding lives in the underlying container's sample
+    // timeline. Captures both Opus pre_skip (initial_padding) and codec
+    // warm-up shifts (e.g. Vorbis lapping). Determined empirically at init
+    // by probing the first decoded frame.
+    int64_t first_emit_offset_pcm;
 };
 
 struct SF_Encoder {
@@ -76,6 +87,71 @@ static SFSampleFormat from_ffmpeg_sample_format(enum AVSampleFormat format) {
         // FFmpeg does not support a native packed 24-bit format.
         default: return SF_SAMPLE_FORMAT_UNKNOWN;
     }
+}
+
+// Convert a frame's container-time pts to its index in the linear-decode
+// sample stream. linear[0] sits at container PCM frame `first_emit_offset_pcm`,
+// so frame_in_linear = (pts_in_pcm - first_emit_offset_pcm).
+static int get_frame_start_in_pcm_frames(SF_Decoder* decoder, const AVFrame* frame, int64_t* out_frame_start) {
+    int64_t timestamp = frame->best_effort_timestamp;
+    if (timestamp == AV_NOPTS_VALUE) timestamp = frame->pts;
+    if (timestamp == AV_NOPTS_VALUE) return 0;
+
+    int64_t pts_in_pcm = av_rescale_q(timestamp, decoder->format_ctx->streams[decoder->stream_index]->time_base,
+                                      (AVRational){1, decoder->codec_ctx->sample_rate});
+    *out_frame_start = pts_in_pcm - decoder->first_emit_offset_pcm;
+    if (*out_frame_start < 0) *out_frame_start = 0;
+    return 1;
+}
+
+static int prepare_frame_input_for_seek(SF_Decoder* decoder, const uint8_t*** input_data,
+                                        int* input_samples, uint8_t*** allocated_data) {
+    *input_data = (const uint8_t**)decoder->frame->extended_data;
+    *input_samples = decoder->frame->nb_samples;
+    *allocated_data = NULL;
+
+    if (!decoder->seek_target_pending) return 1;
+
+    int64_t frame_start;
+    if (!get_frame_start_in_pcm_frames(decoder, decoder->frame, &frame_start)) {
+        decoder->seek_target_pending = 0;
+        return 1;
+    }
+
+    int64_t frame_end = frame_start + decoder->frame->nb_samples;
+    if (frame_end <= decoder->seek_target_frame) return 0;
+
+    if (frame_start < decoder->seek_target_frame) {
+        int64_t samples_to_skip_64 = decoder->seek_target_frame - frame_start;
+        if (samples_to_skip_64 > INT_MAX) return -1;
+
+        int samples_to_skip = (int)samples_to_skip_64;
+        enum AVSampleFormat frame_format = (enum AVSampleFormat)decoder->frame->format;
+        int bytes_per_sample = av_get_bytes_per_sample(frame_format);
+        if (bytes_per_sample <= 0) return -1;
+
+        int channels = decoder->frame->ch_layout.nb_channels;
+        if (channels <= 0) channels = decoder->codec_ctx->ch_layout.nb_channels;
+        if (channels <= 0) return -1;
+        int planar = av_sample_fmt_is_planar(frame_format);
+        int planes = planar ? channels : 1;
+
+        uint8_t** shifted_data = (uint8_t**)av_calloc(planes, sizeof(uint8_t*));
+        if (!shifted_data) return -1;
+
+        for (int i = 0; i < planes; i++) {
+            int64_t offset = (int64_t)samples_to_skip * bytes_per_sample;
+            if (!planar) offset *= channels;
+            shifted_data[i] = decoder->frame->extended_data[i] + offset;
+        }
+
+        *allocated_data = shifted_data;
+        *input_data = (const uint8_t**)shifted_data;
+        *input_samples = decoder->frame->nb_samples - samples_to_skip;
+    }
+
+    decoder->seek_target_pending = 0;
+    return 1;
 }
 
 // I/O Callbacks
@@ -186,6 +262,49 @@ SF_FFMPEG_API SF_Result sf_decoder_init(SF_Decoder* decoder, sf_read_callback on
     decoder->frame = av_frame_alloc();
     if (!decoder->packet || !decoder->frame) return SF_RESULT_DECODER_ERROR_PACKET_FRAME_ALLOC;
 
+    // Probe the first decoded frame to learn where linear[0] sits in the
+    // container's sample timeline. This combines codec internal pre-skip
+    // (codec_ctx->initial_padding, e.g. Opus = 312) with codec warm-up
+    // shifts that are expressed via the first frame's pts (e.g. Vorbis
+    // lapping ≈ +128). After capturing the offset, rewind so subsequent
+    // reads start fresh from the beginning.
+    decoder->first_emit_offset_pcm = decoder->codec_ctx->initial_padding;
+    if (decoder->format_ctx->pb) {
+        int64_t saved_pos = avio_tell(decoder->format_ctx->pb);
+        int64_t probed = avio_seek(decoder->format_ctx->pb, saved_pos, SEEK_SET);
+        if (probed >= 0) {
+            AVPacket* probe_pkt = av_packet_alloc();
+            if (probe_pkt) {
+                while (av_read_frame(decoder->format_ctx, probe_pkt) >= 0) {
+                    int got_frame = 0;
+                    if (probe_pkt->stream_index == decoder->stream_index) {
+                        if (avcodec_send_packet(decoder->codec_ctx, probe_pkt) >= 0) {
+                            if (avcodec_receive_frame(decoder->codec_ctx, decoder->frame) == 0) {
+                                int64_t pts = decoder->frame->best_effort_timestamp;
+                                if (pts == AV_NOPTS_VALUE) pts = decoder->frame->pts;
+                                if (pts != AV_NOPTS_VALUE) {
+                                    int64_t pts_in_pcm = av_rescale_q(pts, stream->time_base,
+                                                                      (AVRational){1, decoder->codec_ctx->sample_rate});
+                                    decoder->first_emit_offset_pcm = pts_in_pcm + decoder->codec_ctx->initial_padding;
+                                }
+                                av_frame_unref(decoder->frame);
+                                got_frame = 1;
+                            }
+                        }
+                    }
+                    av_packet_unref(probe_pkt);
+                    if (got_frame) break;
+                }
+                av_packet_free(&probe_pkt);
+            }
+            int ret = avformat_seek_file(decoder->format_ctx, decoder->stream_index,
+                                         INT64_MIN, INT64_MIN, INT64_MAX, 0);
+            if (ret < 0) decoder->first_emit_offset_pcm = decoder->codec_ctx->initial_padding;
+        }
+    }
+    avcodec_flush_buffers(decoder->codec_ctx);
+    swr_init(decoder->swr_ctx);
+
     return SF_RESULT_SUCCESS;
 }
 
@@ -232,12 +351,29 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
         int ret = avcodec_receive_frame(decoder->codec_ctx, decoder->frame);
 
         if (ret == 0) {
+            const uint8_t** input_data;
+            uint8_t** allocated_data;
+            int input_samples;
+
+            int prepare_ret = prepare_frame_input_for_seek(decoder, &input_data, &input_samples, &allocated_data);
+            if (prepare_ret < 0) {
+                av_frame_unref(decoder->frame);
+                *out_frames_read = frames_read;
+                return SF_RESULT_DECODER_ERROR_DECODING_FAILED;
+            }
+            if (prepare_ret == 0) {
+                av_frame_unref(decoder->frame);
+                continue;
+            }
+
             // Resample the frame to target format
             int out_samples = swr_convert(decoder->swr_ctx,
                                          out_ptr,
                                          (int)(frameCount - frames_read),
-                                         (const uint8_t**)decoder->frame->data,
-                                         decoder->frame->nb_samples);
+                                         input_data,
+                                         input_samples);
+
+            if (allocated_data) av_freep(&allocated_data);
 
             if (out_samples > 0) {
                 out_ptr[0] += out_samples * decoder->target_channels * decoder->target_bytes_per_sample;
@@ -307,29 +443,40 @@ SF_FFMPEG_API SF_Result sf_decoder_read_pcm_frames(SF_Decoder* decoder, void* pF
 
 SF_FFMPEG_API SF_Result sf_decoder_seek_to_pcm_frame(SF_Decoder* decoder, int64_t frameIndex) {
     if (!decoder || !decoder->format_ctx || decoder->stream_index < 0) return SF_RESULT_ERROR_INVALID_ARGS;
+    if (frameIndex < 0) frameIndex = 0;
 
     AVStream* stream = decoder->format_ctx->streams[decoder->stream_index];
-    int64_t timestamp = av_rescale_q(frameIndex, (AVRational){1, stream->codecpar->sample_rate}, stream->time_base);
 
-    // Flush buffers and seek
+    // The user's frameIndex addresses linear-decode output. linear[0] sits at
+    // container PCM `first_emit_offset_pcm`, so target the same container
+    // position by adding that offset. Captures Opus pre_skip + Vorbis
+    // lapping shift in one step.
+    int64_t target_pcm_in_container = frameIndex + decoder->first_emit_offset_pcm;
+    int64_t target_ts = av_rescale_q(target_pcm_in_container,
+                                     (AVRational){1, stream->codecpar->sample_rate},
+                                     stream->time_base);
+
     avcodec_flush_buffers(decoder->codec_ctx);
-    swr_init(decoder->swr_ctx);  // Reset resampler state
+    swr_init(decoder->swr_ctx);
 
-    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index, timestamp, AVSEEK_FLAG_BACKWARD);
+    // av_seek_frame + AVSEEK_FLAG_BACKWARD lands on the closest keyframe
+    // at-or-before target_ts; this matches the upstream contract and gives
+    // demuxers (notably Ogg) a predictable landing.
+    int ret = av_seek_frame(decoder->format_ctx, decoder->stream_index,
+                            target_ts, AVSEEK_FLAG_BACKWARD);
     if (ret < 0) {
-        return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
+        // Fall back to avformat_seek_file for demuxers whose read_seek2
+        // implementation only honors the modern API.
+        ret = avformat_seek_file(decoder->format_ctx, decoder->stream_index,
+                                 INT64_MIN, target_ts, target_ts, 0);
+        if (ret < 0) return SF_RESULT_DECODER_ERROR_SEEK_FAILED;
     }
 
-    // Read and discard packets until we reach the desired position
-    AVPacket* pkt = av_packet_alloc();
-    while (av_read_frame(decoder->format_ctx, pkt) >= 0) {
-        if (pkt->stream_index == decoder->stream_index) {
-            av_packet_unref(pkt);
-            break;
-        }
-        av_packet_unref(pkt);
-    }
-    av_packet_free(&pkt);
+    // Second flush honors AV_PKT_DATA_SKIP_SAMPLES that the demuxer reattaches
+    // on the next packet (Opus pre-skip).
+    avcodec_flush_buffers(decoder->codec_ctx);
+    decoder->seek_target_frame = frameIndex;
+    decoder->seek_target_pending = 1;
 
     return SF_RESULT_SUCCESS;
 }
