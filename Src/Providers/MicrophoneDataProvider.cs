@@ -41,10 +41,10 @@ public class MicrophoneDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int Position { get; private set; }
+    public long Position { get; private set; }
 
     /// <inheritdoc />
-    public int Length => -1; // Unknown length for a live stream
+    public long Length => -1; // Unknown length for a live stream
 
     /// <inheritdoc />
     public bool CanSeek => false;
@@ -173,7 +173,7 @@ public class MicrophoneDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int offset) => throw new NotSupportedException("Cannot seek a live stream.");
+    public void Seek(long offset) => throw new NotSupportedException("Cannot seek a live stream.");
 
     /// <inheritdoc />
     public void Dispose()

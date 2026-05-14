@@ -24,7 +24,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
 
     private readonly Queue<float> _buffer = new();
     private bool _isEndOfStream;
-    private int _samplePosition;
+    private long _samplePosition;
 
     private readonly object _lock = new();
 
@@ -132,7 +132,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int Position
+    public long Position
     {
         get
         {
@@ -144,7 +144,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     }
     
     /// <inheritdoc />
-    public int Length => FormatInfo != null ? (int)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
+    public long Length => FormatInfo != null ? (long)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
 
     /// <inheritdoc />
     public bool CanSeek { get; }
@@ -212,7 +212,7 @@ public sealed class ChunkedDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int sampleOffset)
+    public void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         if (!CanSeek) throw new NotSupportedException("Seeking is not supported on the underlying stream or decoder.");

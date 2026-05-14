@@ -137,10 +137,10 @@ public sealed class AssetDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int Position => _samplePosition;
+    public long Position => _samplePosition;
 
     /// <inheritdoc />
-    public int Length { get; private set; } // Length in samples
+    public long Length { get; private set; } // Length in samples
 
     /// <inheritdoc />
     public bool CanSeek => true;
@@ -183,11 +183,11 @@ public sealed class AssetDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int sampleOffset)
+    public void Seek(long sampleOffset)
     {
         if (IsDisposed || _data is null) return;
 
-        _samplePosition = Math.Clamp(sampleOffset, 0, _data.Length);
+        _samplePosition = (int)Math.Clamp(sampleOffset, 0, _data.Length);
         PositionChanged?.Invoke(this, new PositionChangedEventArgs(_samplePosition));
     }
 
@@ -196,14 +196,17 @@ public sealed class AssetDataProvider : ISoundDataProvider
         SampleFormat = decoder.SampleFormat;
         var length = decoder.Length > 0 || FormatInfo == null
             ? decoder.Length
-            : (int)(FormatInfo.Duration.TotalSeconds * FormatInfo.SampleRate * FormatInfo.ChannelCount);
+            : (long)(FormatInfo.Duration.TotalSeconds * FormatInfo.SampleRate * FormatInfo.ChannelCount);
 
         return length > 0 ? DecodeKnownLength(decoder, length) : DecodeUnknownLength(decoder);
     }
 
-    private static float[] DecodeKnownLength(ISoundDecoder decoder, int length)
+    private static float[] DecodeKnownLength(ISoundDecoder decoder, long length)
     {
-        var samples = new float[length];
+        if (length > int.MaxValue)
+            throw new NotSupportedException("AssetDataProvider cannot preload audio larger than a single managed array. Use StreamDataProvider or ChunkedDataProvider for long audio.");
+
+        var samples = new float[(int)length];
         var read = decoder.Decode(samples);
         if (read < length)
         {

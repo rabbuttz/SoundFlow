@@ -143,7 +143,7 @@ public static class WatermarkTuner
     {
         var results = new List<int>();
         var fileLengthFrames = source.Length / channels;
-        var validRegion = fileLengthFrames - frameCount;
+        var validRegion = (int)Math.Min(fileLengthFrames - frameCount, int.MaxValue);
 
         if (validRegion <= 0) return [0];
 
@@ -175,7 +175,7 @@ public static class WatermarkTuner
     private static int FindDenseAudioSlice(ISoundDataProvider source, int frameCount, int channels)
     {
         var fileLengthFrames = source.Length / channels;
-        var validRegion = fileLengthFrames - frameCount;
+        var validRegion = (int)Math.Min(fileLengthFrames - frameCount, int.MaxValue);
         if (validRegion <= 0) return 0;
 
         var bestStart = -1;

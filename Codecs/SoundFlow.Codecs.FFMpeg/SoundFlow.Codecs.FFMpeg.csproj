@@ -43,11 +43,6 @@
     </ItemGroup>
 
     <ItemGroup>
-        <None Include="$(PackageId).targets" Pack="true" PackagePath="" />
-        <None Include="runtimes\**\*" Pack="true" PackagePath="runtimes" />
-    </ItemGroup>
-
-    <ItemGroup>
         <None Include="SoundFlow.Codecs.FFMpeg.targets" Pack="true" PackagePath="" />
         <None Include="README.md" Pack="true" PackagePath="" />
         <None Include="..\..\LICENSE.md" Pack="true" PackagePath="" />

@@ -58,14 +58,14 @@ internal sealed class FFmpegDecoder : ISoundDecoder
             _handle.Dispose();
             throw new InvalidOperationException(logMessage);
         }
-        Length = (int)(lengthInFrames * Channels);
+        Length = checked(lengthInFrames * Channels);
     }
     
     /// <inheritdoc />
     public bool IsDisposed => _handle.IsClosed;
     
     /// <inheritdoc />
-    public int Length { get; }
+    public long Length { get; }
     
     /// <inheritdoc />
     public SampleFormat SampleFormat { get; }
@@ -106,7 +106,7 @@ internal sealed class FFmpegDecoder : ISoundDecoder
     }
 
     /// <inheritdoc />
-    public bool Seek(int sampleOffset)
+    public bool Seek(long sampleOffset)
     {
         if (IsDisposed || !_stream.CanSeek) return false;
 

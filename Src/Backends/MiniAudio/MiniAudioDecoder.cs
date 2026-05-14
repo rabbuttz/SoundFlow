@@ -55,7 +55,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
         if (result != MiniAudioResult.Success) 
             throw new MiniaudioException("MiniAudio", result, "Unable to get decoder length.");
         
-        Length = (int)length * Channels;
+        Length = checked((long)length * Channels);
         _endOfStreamReached = false;
     }
     
@@ -69,7 +69,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     public bool IsDisposed { get; private set; }
 
     /// <inheritdoc />
-    public int Length { get; private set; }
+    public long Length { get; private set; }
 
     /// <inheritdoc />
     public SampleFormat SampleFormat { get; }
@@ -181,7 +181,7 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
     /// <summary>
     ///     Seek to start decoding at the given offset.
     /// </summary>
-    public bool Seek(int offset)
+    public bool Seek(long offset)
     {
         lock (_syncLock)
         {
@@ -189,8 +189,8 @@ internal sealed unsafe class MiniAudioDecoder : ISoundDecoder
             if (Length == 0)
             {
                 miniAudioResult = Native.DecoderGetLengthInPcmFrames(_decoder, out var length);
-                if (miniAudioResult != MiniAudioResult.Success || (int)length == 0) return false;
-                Length = (int)length * Channels;
+                if (miniAudioResult != MiniAudioResult.Success || length == 0) return false;
+                Length = checked((long)length * Channels);
             }
 
             _endOfStreamReached = false;

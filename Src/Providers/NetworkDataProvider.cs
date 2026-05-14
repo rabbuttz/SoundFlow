@@ -61,10 +61,10 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int Position => _actualProvider?.Position ?? 0;
+    public long Position => _actualProvider?.Position ?? 0;
 
     /// <inheritdoc />
-    public int Length => _actualProvider?.Length ?? 0;
+    public long Length => _actualProvider?.Length ?? 0;
 
     /// <inheritdoc />
     public bool CanSeek => _actualProvider?.CanSeek ?? false;
@@ -138,7 +138,7 @@ public sealed class NetworkDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int sampleOffset)
+    public void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
 
@@ -229,15 +229,15 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat?
     protected readonly string Url = url;
     protected readonly HttpClient HttpClient = client;
     protected readonly object Lock = new();
-    protected int SamplePosition;
+    protected long SamplePosition;
 
     public abstract Task InitializeAsync();
     
     public abstract int ReadBytes(Span<float> buffer);
-    public abstract void Seek(int sampleOffset);
+    public abstract void Seek(long sampleOffset);
     
-    public int Position => SamplePosition;
-    public int Length { get; protected set; }
+    public long Position => SamplePosition;
+    public long Length { get; protected set; }
     public bool CanSeek { get; protected set; }
     public SampleFormat SampleFormat { get; protected set; }
     public int SampleRate { get; protected set; }
@@ -248,7 +248,7 @@ internal abstract class NetworkDataProviderBase(AudioEngine engine, AudioFormat?
     public event EventHandler<PositionChangedEventArgs>? PositionChanged;
 
     protected virtual void OnEndOfStreamReached() => EndOfStreamReached?.Invoke(this, EventArgs.Empty);
-    protected virtual void OnPositionChanged(int newPosition) => PositionChanged?.Invoke(this, new PositionChangedEventArgs(newPosition));
+    protected virtual void OnPositionChanged(long newPosition) => PositionChanged?.Invoke(this, new PositionChangedEventArgs(newPosition));
 
     public virtual void Dispose()
     {
@@ -330,7 +330,7 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? form
 
         SampleFormat = _decoder.SampleFormat;
         SampleRate = _decoder.SampleRate;
-        Length = FormatInfo != null ? (int)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
+        Length = FormatInfo != null ? (long)(FormatInfo.Duration.TotalSeconds * SampleRate * FormatInfo.ChannelCount) : _decoder.Length;
         CanSeek = _stream.CanSeek;
     }
 
@@ -354,7 +354,7 @@ internal sealed class DirectStreamProvider(AudioEngine engine, AudioFormat? form
         return samplesRead;
     }
 
-    public override void Seek(int sampleOffset)
+    public override void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         if (!CanSeek) throw new NotSupportedException("Seeking is not supported for this stream.");
@@ -414,7 +414,7 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         await DetermineSegmentFormatAsync(_cancellationTokenSource.Token);
         SampleFormat = SampleFormat.F32; // Decoded HLS is typically float
         SampleRate = UserProvidedFormat!.Value.SampleRate;
-        Length = _isEndList ? (int)(_hlsTotalDuration * SampleRate) : -1;
+        Length = _isEndList ? (long)(_hlsTotalDuration * SampleRate * UserProvidedFormat.Value.Channels) : -1;
         CanSeek = _isEndList;
 
         // Start background buffering
@@ -488,14 +488,14 @@ internal sealed class HlsStreamProvider(AudioEngine engine, AudioFormat? format,
         return samplesRead;
     }
     
-    public override void Seek(int sampleOffset)
+    public override void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
 
         if (!CanSeek)
             throw new NotSupportedException("Seeking is not supported for this stream.");
 
-        var targetTime = sampleOffset / (double)SampleRate;
+        var targetTime = sampleOffset / (double)(SampleRate * UserProvidedFormat!.Value.Channels);
         double cumulativeTime = 0;
         var newSegmentIndex = 0;
         foreach (var segment in _hlsSegments)

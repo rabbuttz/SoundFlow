@@ -10,15 +10,15 @@ namespace SoundFlow.Abstracts;
 /// </summary>
 public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 {
-    private int _rawSamplePosition;
+    private long _rawSamplePosition;
 
     private readonly ISoundDataProvider _dataProvider;
     private float _currentFractionalFrame;
     private float[] _resampleBuffer;
     private int _resampleBufferValidSamples;
     private float _playbackSpeed = 1.0f;
-    private int _loopStartSamples;
-    private int _loopEndSamples = -1;
+    private long _loopStartSamples;
+    private long _loopEndSamples = -1;
     private readonly WsolaTimeStretcher _timeStretcher;
     private float[] _timeStretcherInputBuffer;
     private int _timeStretcherInputBufferValidSamples;
@@ -79,33 +79,33 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     public bool IsLooping { get; set; }
 
     /// <inheritdoc />
-    public float Time =>
+    public double Time =>
         _dataProvider.Length == 0 || Format.Channels == 0 || Format.SampleRate == 0
             ? 0
-            : (float)_rawSamplePosition / Format.Channels / Format.SampleRate;
+            : (double)_rawSamplePosition / Format.Channels / Format.SampleRate;
 
     /// <inheritdoc />
-    public float Duration =>
+    public double Duration =>
         _dataProvider.Length == 0 || Format.Channels == 0 || Format.SampleRate == 0
             ? 0f
-            : (float)_dataProvider.Length / Format.Channels / Format.SampleRate;
+            : (double)_dataProvider.Length / Format.Channels / Format.SampleRate;
 
     /// <inheritdoc />
-    public int LoopStartSamples => _loopStartSamples;
+    public long LoopStartSamples => _loopStartSamples;
 
     /// <inheritdoc />
-    public int LoopEndSamples => _loopEndSamples;
+    public long LoopEndSamples => _loopEndSamples;
 
     /// <inheritdoc />
-    public float LoopStartSeconds => (Format.Channels == 0 || Format.SampleRate == 0)
+    public double LoopStartSeconds => (Format.Channels == 0 || Format.SampleRate == 0)
         ? 0
-        : (float)_loopStartSamples / Format.Channels / Format.SampleRate;
+        : (double)_loopStartSamples / Format.Channels / Format.SampleRate;
 
     /// <inheritdoc />
-    public float LoopEndSeconds =>
+    public double LoopEndSeconds =>
         _loopEndSamples == -1 || Format.Channels == 0 || Format.SampleRate == 0
             ? -1
-            : (float)_loopEndSamples / Format.Channels / Format.SampleRate;
+            : (double)_loopEndSamples / Format.Channels / Format.SampleRate;
 
 
     /// <summary>
@@ -177,7 +177,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
 
         var outputFramesTotal = output.Length / channels;
         var outputBufferOffset = 0;
-        var totalSourceSamplesAdvancedThisCall = 0; // Total samples advanced in the original source.
+        long totalSourceSamplesAdvancedThisCall = 0; // Total samples advanced in the original source.
 
         for (var i = 0; i < outputFramesTotal; i++)
         {
@@ -560,19 +560,19 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     public bool Seek(TimeSpan time, SeekOrigin seekOrigin = SeekOrigin.Begin)
     {
         if (Format.Channels == 0 || Format.SampleRate == 0) return false;
-        float targetTimeSeconds;
+        double targetTimeSeconds;
         var currentDuration = Duration;
         switch (seekOrigin)
         {
             case SeekOrigin.Begin:
-                targetTimeSeconds = (float)time.TotalSeconds;
+                targetTimeSeconds = time.TotalSeconds;
                 break;
             case SeekOrigin.Current: 
-                targetTimeSeconds = Time + (float)time.TotalSeconds;
+                targetTimeSeconds = Time + time.TotalSeconds;
                 break;
             case SeekOrigin.End:
                 // If duration is 0, treat as seeking relative to 0.
-                targetTimeSeconds = (currentDuration > 0 ? currentDuration : 0) + (float)time.TotalSeconds;
+                targetTimeSeconds = (currentDuration > 0 ? currentDuration : 0) + time.TotalSeconds;
                 break;
             default: return false;
         }
@@ -583,27 +583,27 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     }
 
     /// <inheritdoc />
-    public bool Seek(float timeInSeconds)
+    public bool Seek(double timeInSeconds)
     {
         return Seek(timeInSeconds, Format.Channels);
     }
     
-    private bool Seek(float timeInSeconds, int channels)
+    private bool Seek(double timeInSeconds, int channels)
     {
         if (channels == 0 || Format.SampleRate == 0) return false;
         timeInSeconds = Math.Max(0, timeInSeconds);
         // Convert time in seconds to sample offset in source data.
-        var sampleOffset = (int)(timeInSeconds / Duration * _dataProvider.Length);
+        var sampleOffset = (long)(timeInSeconds / Duration * _dataProvider.Length);
         return Seek(sampleOffset, channels);
     }
 
     /// <inheritdoc />
-    public bool Seek(int sampleOffset)
+    public bool Seek(long sampleOffset)
     {
         return Seek(sampleOffset, Format.Channels);
     }
 
-    private bool Seek(int sampleOffset, int channels)
+    private bool Seek(long sampleOffset, int channels)
     {
         if (!_dataProvider.CanSeek || channels == 0) return false;
 
@@ -635,7 +635,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     #region Loop Point Configuration Methods
 
     /// <inheritdoc />
-    public void SetLoopPoints(float startTime, float? endTime = null)
+    public void SetLoopPoints(double startTime, double? endTime = null)
     {
         var channels = Format.Channels;
         var sampleRate = Format.SampleRate;
@@ -644,16 +644,16 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
         if (startTime < 0)
             throw new ArgumentOutOfRangeException(nameof(startTime), "Loop start time cannot be negative.");
 
-        var effectiveEndTime = endTime ?? -1f;
-        if (Math.Abs(effectiveEndTime - -1f) > 1e-6f && effectiveEndTime < startTime)
+        var effectiveEndTime = endTime ?? -1;
+        if (Math.Abs(effectiveEndTime - -1) > 1e-6 && effectiveEndTime < startTime)
             throw new ArgumentOutOfRangeException(nameof(endTime),
                 "Loop end time must be greater than or equal to start time, or -1.");
 
         // Convert seconds to samples.
-        _loopStartSamples = (int)(startTime * sampleRate * channels);
-        _loopEndSamples = Math.Abs(effectiveEndTime - -1f) < 1e-6f
+        _loopStartSamples = (long)(startTime * sampleRate * channels);
+        _loopEndSamples = Math.Abs(effectiveEndTime - -1) < 1e-6
             ? -1
-            : (int)(effectiveEndTime * sampleRate * channels);
+            : (long)(effectiveEndTime * sampleRate * channels);
 
         // Align to frame boundaries and clamp within data provider length.
         _loopStartSamples = (_loopStartSamples / channels) * channels;
@@ -667,7 +667,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     }
 
     /// <inheritdoc />
-    public void SetLoopPoints(int startSample, int endSample = -1)
+    public void SetLoopPoints(long startSample, long endSample = -1)
     {
         var channels = Format.Channels;
         if (channels == 0) return;
@@ -697,7 +697,7 @@ public abstract class SoundPlayerBase : SoundComponent, ISoundPlayer
     /// <inheritdoc />
     public void SetLoopPoints(TimeSpan startTime, TimeSpan? endTime = null)
     {
-        SetLoopPoints((float)startTime.TotalSeconds, (float?)endTime?.TotalSeconds);
+        SetLoopPoints(startTime.TotalSeconds, endTime?.TotalSeconds);
     }
 
     #endregion

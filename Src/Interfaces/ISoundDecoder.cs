@@ -17,7 +17,7 @@ public interface ISoundDecoder : IDisposable
     ///     Gets the length of the PCM frames known to the decoder.
     ///     May be zero if audio is a stream or simply unknown to the audio format.
     /// </summary>
-    int Length { get; }
+    long Length { get; }
 
     /// <summary>
     ///     Gets the format of the audio samples.
@@ -39,7 +39,7 @@ public interface ISoundDecoder : IDisposable
     /// </summary>
     /// <param name="offset">Some offset in samples.</param>
     /// <returns>True, if seeking is possible and was successful.</returns>
-    bool Seek(int offset);
+    bool Seek(long offset);
 
     /// <summary>
     ///     Decodes the next block of samples, writing samples into <paramref name="samples" />.

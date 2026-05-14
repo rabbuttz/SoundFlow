@@ -19,7 +19,7 @@ public class RawDataProvider : ISoundDataProvider
     private readonly int[]? _intArray;
     private readonly short[]? _shortData;
     private readonly SampleFormat _sampleFormat;
-    private int _position;
+    private long _position;
     
     /// <summary>
     ///     Initializes a new instance of the <see cref="RawDataProvider"/> class from a raw float array.
@@ -94,10 +94,10 @@ public class RawDataProvider : ISoundDataProvider
     
 
     /// <inheritdoc />
-    public int Position => _position;
+    public long Position => _position;
 
     /// <inheritdoc />
-    public int Length => GetLength();
+    public long Length => GetLength();
 
     /// <inheritdoc />
     public bool CanSeek => _pcmStream?.CanSeek ?? true;
@@ -143,7 +143,7 @@ public class RawDataProvider : ISoundDataProvider
     /// <exception cref="ObjectDisposedException">Thrown if the provider has been disposed.</exception>
     /// <exception cref="NotSupportedException">Thrown if seeking is not supported on the underlying PCM stream.</exception>
     /// <exception cref="InvalidOperationException">Thrown if no data source is initialized.</exception>
-    public void Seek(int sampleOffset)
+    public void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
 
@@ -185,11 +185,11 @@ public class RawDataProvider : ISoundDataProvider
     ///     Length in samples for streams that can seek, -1 for non-seekable streams,
     ///     or length of array data sources
     /// </returns>
-    private int GetLength()
+    private long GetLength()
     {
         if (_pcmStream != null)
         {
-            return _pcmStream.CanSeek ? (int)(_pcmStream.Length / _sampleFormat.GetBytesPerSample()) : -1;
+            return _pcmStream.CanSeek ? _pcmStream.Length / _sampleFormat.GetBytesPerSample() : -1;
         }
         
         return GetArrayLength();
@@ -226,11 +226,11 @@ public class RawDataProvider : ISoundDataProvider
         {
             var bytesPerSample = _sampleFormat.GetBytesPerSample();
             var byteOffset = _position * bytesPerSample;
-            var bytesToRead = Math.Min(buffer.Length * bytesPerSample, _byteArray.Length - byteOffset);
+            var bytesToRead = (int)Math.Min(buffer.Length * bytesPerSample, _byteArray.Length - byteOffset);
             
             if (bytesToRead <= 0) return 0;
             
-            ConvertBytesToFloat(_byteArray.AsSpan(byteOffset, bytesToRead), buffer[..(bytesToRead / bytesPerSample)], _sampleFormat);
+            ConvertBytesToFloat(_byteArray.AsSpan((int)byteOffset, bytesToRead), buffer[..(bytesToRead / bytesPerSample)], _sampleFormat);
             return bytesToRead / bytesPerSample;
         }
         
@@ -276,13 +276,13 @@ public class RawDataProvider : ISoundDataProvider
     private int ReadFromArray<T>(T[] source, Span<float> buffer, Func<T, float> convertAction)
     {
         var remainingSamples = source.Length - _position;
-        var samplesActuallyRead = Math.Min(buffer.Length, remainingSamples);
+        var samplesActuallyRead = (int)Math.Min(buffer.Length, remainingSamples);
         
         if (samplesActuallyRead <= 0) return 0;
         
         for (var i = 0; i < samplesActuallyRead; i++)
         {
-            buffer[i] = convertAction(source[_position + i]);
+            buffer[i] = convertAction(source[(int)_position + i]);
         }
         
         return samplesActuallyRead;
@@ -294,9 +294,9 @@ public class RawDataProvider : ISoundDataProvider
     /// <param name="offset">Requested sample offset</param>
     /// <param name="maxSamples">Maximum available samples</param>
     /// <returns>Clamped sample offset within valid range</returns>
-    private static int ClampSampleOffset(int offset, long maxSamples)
+    private static long ClampSampleOffset(long offset, long maxSamples)
     {
-        return (int)Math.Clamp(offset, 0, maxSamples);
+        return Math.Clamp(offset, 0, maxSamples);
     }
 
     /// <summary>

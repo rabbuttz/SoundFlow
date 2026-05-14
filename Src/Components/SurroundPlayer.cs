@@ -711,7 +711,7 @@ public sealed class SurroundPlayer : SoundPlayerBase
     /// Seeks to a specific sample offset in the audio playback.
     /// </summary>
     /// <param name="sampleOffset">The sample offset to seek to, relative to the beginning of the audio data.</param>
-    public new bool Seek(int sampleOffset)
+    public new bool Seek(long sampleOffset)
     {
         var result = base.Seek(sampleOffset);
         if (result)

@@ -37,32 +37,32 @@ public interface ISoundPlayer : IDisposable
     /// <summary>
     /// Gets the current playback time in seconds, relative to the beginning of the audio.
     /// </summary>
-    float Time { get; }
+    double Time { get; }
 
     /// <summary>
     /// Gets the total duration of the audio in seconds.
     /// </summary>
-    float Duration { get; }
+    double Duration { get; }
     
     /// <summary>
     /// Gets the loop start point in samples.
     /// </summary>
-    int LoopStartSamples { get; }
+    long LoopStartSamples { get; }
     
     /// <summary>
     /// Gets the loop end point in samples. -1 indicates loop to the natural end of the audio.
     /// </summary>
-    int LoopEndSamples { get; }
+    long LoopEndSamples { get; }
     
     /// <summary>
     /// Gets the loop start point in seconds.
     /// </summary>
-    float LoopStartSeconds { get; }
+    double LoopStartSeconds { get; }
     
     /// <summary>
     /// Gets the loop end point in seconds. -1 indicates loop to the natural end of the audio.
     /// </summary>
-    float LoopEndSeconds { get; }
+    double LoopEndSeconds { get; }
 
     /// <summary>
     /// Starts or resumes playback of the audio from the current position.
@@ -104,27 +104,27 @@ public interface ISoundPlayer : IDisposable
     /// Seeks to a specific time in the audio playback.
     /// </summary>
     /// <param name="time">The time in seconds to seek to, relative to the beginning of the audio.</param>
-    bool Seek(float time);
+    bool Seek(double time);
 
     /// <summary>
     /// Seeks to a specific sample offset in the audio playback.
     /// </summary>
     /// <param name="sampleOffset">The sample offset to seek to, relative to the beginning of the audio data.</param>
-    bool Seek(int sampleOffset);
+    bool Seek(long sampleOffset);
     
     /// <summary>
     /// Sets the loop points for the sound player in seconds.
     /// </summary>
     /// <param name="startTime">The loop start time in seconds. Must be non-negative.</param>
     /// <param name="endTime">The loop end time in seconds, optional. Use -1 or null to loop to the natural end of the audio. Must be greater than or equal to startTime, or -1.</param>
-    void SetLoopPoints(float startTime, float? endTime = -1f);
+    void SetLoopPoints(double startTime, double? endTime = -1);
 
     /// <summary>
     /// Sets the loop points for the sound player in samples.
     /// </summary>
     /// <param name="startSample">The loop start sample. Must be non-negative.</param>
     /// <param name="endSample">The loop end sample, optional. Use -1 or null to loop to the natural end of the audio. Must be greater than or equal to startSample, or -1.</param>
-    void SetLoopPoints(int startSample, int endSample = -1);
+    void SetLoopPoints(long startSample, long endSample = -1);
     
     
     /// <summary>

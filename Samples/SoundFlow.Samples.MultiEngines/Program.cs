@@ -294,7 +294,7 @@ internal static class Program
         while (true)
         {
             Console.Clear();
-            Engine.UpdateDevicesInfo();
+            Engine.UpdateAudioDevicesInfo();
             var availableDevices = type == DeviceType.Playback ? Engine.PlaybackDevices : Engine.CaptureDevices;
 
             if (availableDevices.Length == 0)

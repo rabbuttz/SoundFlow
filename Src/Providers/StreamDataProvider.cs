@@ -117,12 +117,12 @@ public sealed class StreamDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public int Position { get; private set; }
+    public long Position { get; private set; }
 
     /// <inheritdoc />
-    public int Length => _decoder.Length > 0 || FormatInfo == null
+    public long Length => _decoder.Length > 0 || FormatInfo == null
         ? _decoder.Length
-        : (int)(FormatInfo.Duration.TotalSeconds * FormatInfo.SampleRate * FormatInfo.ChannelCount);
+        : (long)(FormatInfo.Duration.TotalSeconds * FormatInfo.SampleRate * FormatInfo.ChannelCount);
 
     /// <inheritdoc />
     public bool CanSeek => _stream.CanSeek;
@@ -156,7 +156,7 @@ public sealed class StreamDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int sampleOffset)
+    public void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
 

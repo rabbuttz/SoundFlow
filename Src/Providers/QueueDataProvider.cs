@@ -71,10 +71,10 @@ public class QueueDataProvider : ISoundDataProvider
     #region Properties
     
     /// <inheritdoc />
-    public int Position { get; private set; }
+    public long Position { get; private set; }
 
     /// <inheritdoc />
-    public int Length => -1; // Length is unknown as it's a queue.
+    public long Length => -1; // Length is unknown as it's a queue.
 
     /// <inheritdoc />
     public bool CanSeek => false;
@@ -261,7 +261,7 @@ public class QueueDataProvider : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int offset) => throw new InvalidOperationException("Seeking is not supported by the QueueDataProvider.");
+    public void Seek(long offset) => throw new InvalidOperationException("Seeking is not supported by the QueueDataProvider.");
 
     /// <inheritdoc />
     public void Dispose()

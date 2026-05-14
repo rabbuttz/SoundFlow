@@ -11,13 +11,13 @@ public interface ISoundDataProvider : IDisposable
     /// <summary>
     ///     Gets the current playback position in samples.
     /// </summary>
-    int Position { get; }
+    long Position { get; }
 
     /// <summary>
     ///     Gets the total length of the audio data in samples.
     ///     May be 0 or -1 if the length is unknown (e.g., for streaming audio).
     /// </summary>
-    int Length { get; }
+    long Length { get; }
 
     /// <summary>
     ///     Gets a value indicating whether the data source supports seeking.
@@ -59,7 +59,7 @@ public interface ISoundDataProvider : IDisposable
     ///     Sets the playback position to the specified sample offset.
     /// </summary>
     /// <param name="offset">The sample offset to seek to.</param>
-    void Seek(int offset);
+    void Seek(long offset);
 
     /// <summary>
     ///     Raised when the end of the audio stream is reached.
@@ -81,7 +81,7 @@ public class PositionChangedEventArgs : EventArgs
     ///     Initializes a new instance of the <see cref="PositionChangedEventArgs" /> class.
     /// </summary>
     /// <param name="newPosition">The new playback position in samples.</param>
-    public PositionChangedEventArgs(int newPosition)
+    public PositionChangedEventArgs(long newPosition)
     {
         NewPosition = newPosition;
     }
@@ -89,5 +89,5 @@ public class PositionChangedEventArgs : EventArgs
     /// <summary>
     ///     Gets the new playback position in samples.
     /// </summary>
-    public int NewPosition { get; }
+    public long NewPosition { get; }
 }

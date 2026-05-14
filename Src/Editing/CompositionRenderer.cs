@@ -16,7 +16,7 @@ namespace SoundFlow.Editing;
 public sealed class CompositionRenderer : ISoundDataProvider
 {
     private readonly Composition _composition;
-    private int _currentReadPositionSamples;
+    private long _currentReadPositionSamples;
     private PlaybackState _state = PlaybackState.Stopped;
     private bool _needsReset = true;
 
@@ -100,7 +100,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
     [EditorBrowsable(EditorBrowsableState.Never)]
     public void SyncSeek(TimeSpan time)
     {
-        var sampleOffset = (int)(time.TotalSeconds * SampleRate * _composition.TargetChannels);
+        var sampleOffset = (long)(time.TotalSeconds * SampleRate * _composition.TargetChannels);
         Seek(sampleOffset);
     }
     
@@ -120,7 +120,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
         var samplesPerQuarter = SampleRate * 60.0 / GetTempoAtCurrentPosition().BeatsPerMinute;
         var samplesPerTick = (int)(samplesPerQuarter / _composition.TicksPerQuarterNote);
         
-        _currentReadPositionSamples += samplesPerTick * tickCount * _composition.TargetChannels;
+        _currentReadPositionSamples += (long)samplesPerTick * tickCount * _composition.TargetChannels;
     }
     
     /// <summary>
@@ -273,7 +273,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
     #region ISoundDataProvider Implementation
 
     /// <inheritdoc />
-    public int Position => _currentReadPositionSamples;
+    public long Position => _currentReadPositionSamples;
     
     /// <summary>
     /// Gets the current playback time in <see cref="TimeSpan"/>.
@@ -282,7 +282,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
         TimeSpan.FromSeconds((double)_currentReadPositionSamples / SampleRate / _composition.TargetChannels);
 
     /// <inheritdoc />
-    public int Length => (int)(_composition.Editor.CalculateTotalDuration().TotalSeconds * _composition.SampleRate * _composition.TargetChannels);
+    public long Length => (long)(_composition.Editor.CalculateTotalDuration().TotalSeconds * _composition.SampleRate * _composition.TargetChannels);
     
     /// <inheritdoc />
     public bool CanSeek => true;
@@ -348,7 +348,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
             // Notify the recorder that a transport loop has occurred for correct timestamping.
             _composition.Recorder.OnTransportLoop(loopDurationSamples);
 
-            Seek((int)(LoopStartTime.Value.TotalSeconds * SampleRate * _composition.TargetChannels));
+            Seek((long)(LoopStartTime.Value.TotalSeconds * SampleRate * _composition.TargetChannels));
             currentTime = LoopStartTime.Value;
         }
 
@@ -373,7 +373,7 @@ public sealed class CompositionRenderer : ISoundDataProvider
     }
 
     /// <inheritdoc />
-    public void Seek(int sampleOffset)
+    public void Seek(long sampleOffset)
     {
         ObjectDisposedException.ThrowIf(IsDisposed, this);
         

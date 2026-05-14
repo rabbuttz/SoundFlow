@@ -275,12 +275,16 @@ public static class CompositionProjectManager
             var samplesToEmbed = provider.Length;
             if (samplesToEmbed > 0)
             {
-                var tempBuffer = ArrayPool<float>.Shared.Rent(samplesToEmbed);
+                if (samplesToEmbed > int.MaxValue)
+                    return sourceRef;
+
+                var samplesToEmbedInt = (int)samplesToEmbed;
+                var tempBuffer = ArrayPool<float>.Shared.Rent(samplesToEmbedInt);
                 try
                 {
                     provider.Seek(0);
-                    var readCount = provider.ReadBytes(tempBuffer.AsSpan(0, samplesToEmbed));
-                    if (readCount == samplesToEmbed)
+                    var readCount = provider.ReadBytes(tempBuffer.AsSpan(0, samplesToEmbedInt));
+                    if (readCount == samplesToEmbedInt)
                     {
                         var byteBuffer = new byte[readCount * sizeof(float)];
                         Buffer.BlockCopy(tempBuffer, 0, byteBuffer, 0, byteBuffer.Length);
@@ -309,13 +313,11 @@ public static class CompositionProjectManager
             if (!File.Exists(consolidatedFilePath))
             {
                 var totalSamples = provider.Length;
-                var tempBuffer = ArrayPool<float>.Shared.Rent(totalSamples);
+                const int consolidationBufferSize = 262_144;
+                var tempBuffer = ArrayPool<float>.Shared.Rent((int)Math.Min(totalSamples, consolidationBufferSize));
                 try
                 {
-                    provider.Seek(0); // Read from the beginning
-                    var samplesRead = provider.ReadBytes(tempBuffer.AsSpan(0, totalSamples));
-
-                    if (samplesRead == totalSamples && totalSamples > 0)
+                    if (totalSamples > 0)
                     {
                         // Use the source provider's own format for consolidation.
                         var audioFormatForEncoding = new AudioFormat
@@ -329,21 +331,38 @@ public static class CompositionProjectManager
                         var stream = new FileStream(consolidatedFilePath, FileMode.Create, FileAccess.Write,
                             FileShare.None, bufferSize: 4096);
                         var encoder = engine.CreateEncoder(stream, "wav", audioFormatForEncoding);
-                        encoder.Encode(tempBuffer.AsSpan(0, samplesRead));
-                        encoder.Dispose();
-                        await stream.DisposeAsync();
+                        try
+                        {
+                            provider.Seek(0); // Read from the beginning
+                            long samplesReadTotal = 0;
+                            while (samplesReadTotal < totalSamples)
+                            {
+                                var samplesToRead = (int)Math.Min(tempBuffer.Length, totalSamples - samplesReadTotal);
+                                var samplesRead = provider.ReadBytes(tempBuffer.AsSpan(0, samplesToRead));
+                                if (samplesRead == 0) break;
+
+                                encoder.Encode(tempBuffer.AsSpan(0, samplesRead));
+                                samplesReadTotal += samplesRead;
+                            }
+
+                            if (samplesReadTotal != totalSamples)
+                            {
+                                Log.Warning(
+                                    $"Could not read all samples from in-memory provider for consolidation (ID: {sourceRef.Id}). Expected {totalSamples}, got {samplesReadTotal}.");
+                                return sourceRef; // Return without consolidated path
+                            }
+                        }
+                        finally
+                        {
+                            encoder.Dispose();
+                            await stream.DisposeAsync();
+                        }
                     }
                     else if (totalSamples == 0)
                     {
                         // Handle empty provider, create an empty WAV file or skip consolidation for it.
                         await File.WriteAllBytesAsync(consolidatedFilePath,
                             CreateEmptyWavHeader(sourceFormat.SampleRate, sourceFormat.Channels, SampleFormat.F32));
-                    }
-                    else
-                    {
-                        Log.Warning(
-                            $"Could not read all samples from in-memory provider for consolidation (ID: {sourceRef.Id}). Expected {totalSamples}, got {samplesRead}.");
-                        return sourceRef; // Return without consolidated path
                     }
                 }
                 finally

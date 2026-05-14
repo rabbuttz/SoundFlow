@@ -77,7 +77,7 @@ internal static class Program
     /// </summary>
     private static DeviceInfo? SelectDevice(DeviceType type)
     {
-        Engine.UpdateDevicesInfo();
+        Engine.UpdateAudioDevicesInfo();
         var devices = type == DeviceType.Playback ? Engine.PlaybackDevices : Engine.CaptureDevices;
 
         if (devices.Length == 0)
